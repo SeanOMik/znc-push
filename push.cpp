@@ -140,7 +140,7 @@ class CPushMod : public CModule
 			defaults["message_uri"] = "";
 			defaults["message_uri_post"] = "no";
 			defaults["message_uri_title"] = "";
-			defaults["message_priority"] = "0";
+			defaults["message_priority"] = "";
 			defaults["message_sound"] = "";
 			defaults["message_escape"] = "";
 
@@ -665,6 +665,70 @@ class CPushMod : public CModule
 				for (MCString::iterator i = params.begin(); i != params.end(); i++) {
 					i->second = expand(i->second, replace);
 				}
+			}
+			else if (service == "gotify")
+			{
+				if (options["message_uri"] == "" || options["secret"] == "" || options["message_priority"] == "")
+				{
+					PutModule("Error: message_uri, secret, or message_priority not set");
+					return;
+				}
+
+				CString::size_type count;
+				VCString parts;
+				CString url = options["message_uri"];
+
+				// Verify that the URL begins with either http:// or https://
+				count = url.Split("://", parts, false);
+
+				if (count != 2)
+				{
+					PutModule("Error: invalid url format");
+					return;
+				}
+
+				if(options["message_uri_post"] != "yes")
+				{
+					use_post = false;
+				}
+
+				if (parts[0] == "https")
+				{
+					use_ssl = true;
+					use_port = 443;
+				}
+				else if (parts[0] == "http")
+				{
+					use_ssl = false;
+					use_port = 80;
+				}
+				else
+				{
+					PutModule("Error: invalid url schema");
+					return;
+				}
+
+				// Process the remaining portion of the URL
+				url = parts[1];
+
+				// Split out the host and optional port number; this breaks with raw IPv6 addresses
+				CString host = url.Token(0, false, "/");
+				count = host.Split(":", parts, false);
+
+				if (count > 1)
+				{
+					use_port = parts[1].ToInt();
+				}
+
+				service_host = parts[0];
+
+				// Take everything after the '/' and add the token to it
+				service_url = "/" + url.Token(1, true, "/") + "?token=" + options["secret"];
+
+				// Add the message to the request body
+				params["title"] = message_title;
+				params["message"] = message_content;
+				params["priority"] = options["message_priority"];
 			}
 			else if (service == "airgram")
 			{
@@ -1520,6 +1584,10 @@ class CPushMod : public CModule
 						else if (value == "url")
 						{
 							PutModule("Note: URL requires setting the 'message_uri' option with the full URL");
+						}
+						else if (value == "gotify")
+						{
+							PutModule("Note: URL requires setting the 'message_uri' option with the base URL and an application token (secret), and a priority (message_priority)");
 						}
 						else if (value == "faast")
 						{
